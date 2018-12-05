@@ -1,69 +1,227 @@
 <p align="center"><img src="https://laravel.com/assets/img/components/logo-laravel.svg"></p>
 
-<p align="center">
-<a href="https://travis-ci.org/laravel/framework"><img src="https://travis-ci.org/laravel/framework.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/d/total.svg" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/v/stable.svg" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/license.svg" alt="License"></a>
-</p>
-
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel attempts to take the pain out of development by easing common tasks used in the majority of web projects, such as:
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Elasticsearch
 
-Laravel is accessible, yet powerful, providing tools needed for large, robust applications.
+### Index a document
 
-## Learning Laravel
+In elasticsearch-php, almost everything is configured by associative arrays.  The REST endpoint, document and optional parameters - everything is an associative array.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of any modern web application framework, making it a breeze to get started learning the framework.
+To index a document, we need to specify four pieces of information: index, type, id and a document body. This is done by
+constructing an associative array of key:value pairs.  The request body is itself an associative array with key:value pairs
+corresponding to the data in your document:
 
-If you're not in the mood to read, [Laracasts](https://laracasts.com) contains over 1100 video tutorials on a range of topics including Laravel, modern PHP, unit testing, JavaScript, and more. Boost the skill level of yourself and your entire team by digging into our comprehensive video library.
+```php
+$params = [
+    'index' => 'my_index',
+    'type' => 'my_type',
+    'id' => 'my_id',
+    'body' => ['testField' => 'abc']
+];
 
-## Laravel Sponsors
+$response = $client->index($params);
+print_r($response);
+```
 
-We would like to extend our thanks to the following sponsors for helping fund on-going Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell):
+The response that you get back indicates the document was created in the index that you specified.  The response is an
+associative array containing a decoded version of the JSON that Elasticsearch returns:
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[British Software Development](https://www.britishsoftware.co)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- [UserInsights](https://userinsights.com)
-- [Fragrantica](https://www.fragrantica.com)
-- [SOFTonSOFA](https://softonsofa.com/)
-- [User10](https://user10.com)
-- [Soumettre.fr](https://soumettre.fr/)
-- [CodeBrisk](https://codebrisk.com)
-- [1Forge](https://1forge.com)
-- [TECPRESSO](https://tecpresso.co.jp/)
-- [Runtime Converter](http://runtimeconverter.com/)
-- [WebL'Agence](https://weblagence.com/)
-- [Invoice Ninja](https://www.invoiceninja.com)
-- [iMi digital](https://www.imi-digital.de/)
-- [Earthlink](https://www.earthlink.ro/)
-- [Steadfast Collective](https://steadfastcollective.com/)
-- [We Are The Robots Inc.](https://watr.mx/)
-- [Understand.io](https://www.understand.io/)
+```php
+Array
+(
+    [_index] => my_index
+    [_type] => my_type
+    [_id] => my_id
+    [_version] => 1
+    [created] => 1
+)
 
-## Contributing
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Get a document
 
-## Security Vulnerabilities
+Let's get the document that we just indexed.  This will simply return the document:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```php
+$params = [
+    'index' => 'my_index',
+    'type' => 'my_type',
+    'id' => 'my_id'
+];
 
-## License
+$response = $client->get($params);
+print_r($response);
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+The response contains some metadata (index, type, etc.) as well as a `_source` field...this is the original document
+that you sent to Elasticsearch.
+
+```php
+Array
+(
+    [_index] => my_index
+    [_type] => my_type
+    [_id] => my_id
+    [_version] => 1
+    [found] => 1
+    [_source] => Array
+        (
+            [testField] => abc
+        )
+
+)
+```
+
+If you want to retrieve the `_source` field directly, there is the `getSource` method:
+
+```php
+$params = [
+    'index' => 'my_index',
+    'type' => 'my_type',
+    'id' => 'my_id'
+];
+
+$source = $client->getSource($params);
+doSomething($source);
+```
+
+### Search for a document
+
+Searching is a hallmark of Elasticsearch, so let's perform a search.  We are going to use the Match query as a demonstration:
+
+```php
+$params = [
+    'index' => 'my_index',
+    'type' => 'my_type',
+    'body' => [
+        'query' => [
+            'match' => [
+                'testField' => 'abc'
+            ]
+        ]
+    ]
+];
+
+$response = $client->search($params);
+print_r($response);
+```
+
+The response is a little different from the previous responses.  We see some metadata (`took`, `timed_out`, etc.) and
+an array named `hits`.  This represents your search results.  Inside of `hits` is another array named `hits`, which contains
+individual search results:
+
+```php
+Array
+(
+    [took] => 1
+    [timed_out] =>
+    [_shards] => Array
+        (
+            [total] => 5
+            [successful] => 5
+            [failed] => 0
+        )
+
+    [hits] => Array
+        (
+            [total] => 1
+            [max_score] => 0.30685282
+            [hits] => Array
+                (
+                    [0] => Array
+                        (
+                            [_index] => my_index
+                            [_type] => my_type
+                            [_id] => my_id
+                            [_score] => 0.30685282
+                            [_source] => Array
+                                (
+                                    [testField] => abc
+                                )
+                        )
+                )
+        )
+)
+```
+
+### Delete a document
+
+Alright, let's go ahead and delete the document that we added previously:
+
+```php
+$params = [
+    'index' => 'my_index',
+    'type' => 'my_type',
+    'id' => 'my_id'
+];
+
+$response = $client->delete($params);
+print_r($response);
+```
+
+You'll notice this is identical syntax to the `get` syntax.  The only difference is the operation: `delete` instead of
+`get`.  The response will confirm the document was deleted:
+
+```php
+Array
+(
+    [found] => 1
+    [_index] => my_index
+    [_type] => my_type
+    [_id] => my_id
+    [_version] => 2
+)
+```
+
+
+### Delete an index
+
+Due to the dynamic nature of Elasticsearch, the first document we added automatically built an index with some default settings.  Let's delete that index because we want to specify our own settings later:
+
+```php
+$deleteParams = [
+    'index' => 'my_index'
+];
+$response = $client->indices()->delete($deleteParams);
+print_r($response);
+```
+
+The response:
+
+
+```php
+Array
+(
+    [acknowledged] => 1
+)
+```
+
+### Create an index
+
+Now that we are starting fresh (no data or index), let's add a new index with some custom settings:
+
+```php
+$params = [
+    'index' => 'my_index',
+    'body' => [
+        'settings' => [
+            'number_of_shards' => 2,
+            'number_of_replicas' => 0
+        ]
+    ]
+];
+
+$response = $client->indices()->create($params);
+print_r($response);
+```
+
+Elasticsearch will now create that index with your chosen settings, and return an acknowledgement:
+
+```php
+Array
+(
+    [acknowledged] => 1
+)
